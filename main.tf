@@ -167,7 +167,7 @@ resource "kubernetes_service" "cloudio_backend_svc" {
     selector = { app = "cloudio-backend" }
     port {
       port        = 8080
-      target_port = 8000 # תוקן לפורט שגילינו ב-kubectl
+      target_port = 8080
     }
     type = "ClusterIP"
   }
@@ -189,7 +189,37 @@ resource "kubernetes_ingress_v1" "cloudio_ingress" {
           backend {
             service {
               name = kubernetes_service.cloudio_backend_svc.metadata[0].name
-              port { number = 8080 } # תואם לפורט השירות
+              port { number = 8080 }
+            }
+          }
+        }
+      }
+    }
+    rule {
+      host = "prometheus.omerha1.shop"
+      http {
+        path {
+          path = "/"
+          path_type = "Prefix"
+          backend {
+            service {
+              name = "prometheus-server"
+              port { number = 80 }
+            }
+          }
+        }
+      }
+    }
+    rule {
+      host = "argo.omerha1.shop"
+      http {
+        path {
+          path = "/"
+          path_type = "Prefix"
+          backend {
+            service {
+              name = "argocd-server"
+              port { number = 80 }
             }
           }
         }

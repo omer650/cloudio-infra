@@ -4,17 +4,15 @@ metadata:
   name: cloudio-backend-service
   namespace: {{ .Values.namespace }}
 spec:
-  type: NodePort
+  type: ClusterIP
   selector:
-    app: {{ .Values.appName }} # מוודא שזה מתחבר ל-cloudio-backend
+    app: {{ .Values.appName }}
   ports:
     - name: http
       protocol: TCP
       port: 80
       targetPort: 80
-      nodePort: 30081
     - name: admin
       protocol: TCP
       port: 8080
-      targetPort: 8000
-      nodePort: 30091
+      targetPort: 8080

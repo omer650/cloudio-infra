@@ -1,7 +1,7 @@
 appName: cloudio-backend
 namespace: cloudio
 replicaCount: 1
-containerPort: 8000
+containerPort: 8080
 image:
   repository: 102586998566.dkr.ecr.eu-west-1.amazonaws.com/cloudio-app
   tag: latest

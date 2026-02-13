@@ -7,7 +7,7 @@ data "aws_route53_zone" "primary" {
 # יצירת רשומת A שמצביעה ל-IP של הקלאסטר
 resource "aws_route53_record" "k8s_record" {
   zone_id = data.aws_route53_zone.primary.zone_id
-  name    = var.domain_name
+  name    = "*.omerha1.shop"
   type    = "A"
   ttl     = "300"
   records = [aws_instance.app_server.public_ip]
