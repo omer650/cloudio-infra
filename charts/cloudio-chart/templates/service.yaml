@@ -4,7 +4,7 @@ metadata:
   name: cloudio-backend-service
   namespace: {{ .Values.namespace }}
 spec:
-  type: ClusterIP
+  type: {{ .Values.service.type }}
   selector:
     app: {{ .Values.appName }}
   ports:
@@ -14,5 +14,6 @@ spec:
       targetPort: 80
     - name: admin
       protocol: TCP
-      port: 8080
+      port: {{ .Values.service.port }}
       targetPort: 8080
+      nodePort: {{ .Values.service.nodePort }}

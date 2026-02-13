@@ -45,6 +45,14 @@ resource "helm_release" "argocd" {
   namespace  = "argocd"
   create_namespace = true
   version    = "5.46.7" # Stable version
+  set {
+    name  = "server.service.type"
+    value = "NodePort"
+  }
+  set {
+    name  = "server.service.nodePortHttp"
+    value = "30082"
+  }
 }
 
 resource "helm_release" "prometheus" {
@@ -53,6 +61,14 @@ resource "helm_release" "prometheus" {
   chart      = "prometheus"
   namespace  = "monitoring"
   create_namespace = true
+  set {
+    name  = "server.service.type"
+    value = "NodePort"
+  }
+  set {
+    name  = "server.service.nodePort"
+    value = "30083"
+  }
 }
 
 resource "helm_release" "elasticsearch" {
@@ -125,21 +141,12 @@ resource "aws_security_group_rule" "allow_k3s_api" {
   security_group_id = aws_security_group.web_sg.id
 }
 
-resource "aws_security_group_rule" "allow_frontend_nodeport" {
+resource "aws_security_group_rule" "allow_nodeports" {
   type              = "ingress"
-  from_port         = 30081
-  to_port           = 30081
+  from_port         = 30080
+  to_port           = 30090
   protocol          = "tcp"
   cidr_blocks       = ["0.0.0.0/0"]
-  security_group_id = aws_security_group.web_sg.id
-}
-
-resource "aws_security_group_rule" "allow_backend_nodeport" {
-  type              = "ingress"
-  from_port         = 30091
-  to_port           = 30091
-  protocol          = "tcp"
-  cidr_blocks       = ["77.137.77.12/32"]
   security_group_id = aws_security_group.web_sg.id
 }
 
@@ -168,8 +175,9 @@ resource "kubernetes_service" "cloudio_backend_svc" {
     port {
       port        = 8080
       target_port = 8080
+      node_port   = 30081
     }
-    type = "ClusterIP"
+    type = "NodePort"
   }
 }
 
@@ -195,21 +203,16 @@ resource "kubernetes_ingress_v1" "cloudio_ingress" {
         }
       }
     }
-    rule {
-      host = "prometheus.omerha1.shop"
-      http {
-        path {
-          path = "/"
-          path_type = "Prefix"
-          backend {
-            service {
-              name = "prometheus-server"
-              port { number = 80 }
-            }
-          }
-        }
-      }
-    }
+  }
+}
+
+resource "kubernetes_ingress_v1" "argocd_ingress" {
+  metadata {
+    name      = "argocd-ingress"
+    namespace = "argocd"
+    annotations = { "kubernetes.io/ingress.class" = "traefik" }
+  }
+  spec {
     rule {
       host = "argo.omerha1.shop"
       http {
@@ -219,6 +222,31 @@ resource "kubernetes_ingress_v1" "cloudio_ingress" {
           backend {
             service {
               name = "argocd-server"
+              port { number = 80 }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+resource "kubernetes_ingress_v1" "prometheus_ingress" {
+  metadata {
+    name      = "prometheus-ingress"
+    namespace = "monitoring"
+    annotations = { "kubernetes.io/ingress.class" = "traefik" }
+  }
+  spec {
+    rule {
+      host = "prometheus.omerha1.shop"
+      http {
+        path {
+          path = "/"
+          path_type = "Prefix"
+          backend {
+            service {
+              name = "prometheus-server"
               port { number = 80 }
             }
           }
