@@ -137,7 +137,7 @@ resource "aws_security_group_rule" "allow_k3s_api" {
   from_port         = 6443
   to_port           = 6443
   protocol          = "tcp"
-  cidr_blocks       = ["77.137.77.12/32"] 
+  cidr_blocks       = ["0.0.0.0/0"] 
   security_group_id = aws_security_group.web_sg.id
 }
 
@@ -274,4 +274,30 @@ resource "aws_security_group_rule" "allow_ssh" {
   protocol          = "tcp"
   cidr_blocks       = ["0.0.0.0/0"]
   security_group_id = aws_security_group.web_sg.id
+}
+
+# --- Route53 Domain Management ---
+
+# קריאת הנתונים של הדומיין שכבר קיים ב-AWS
+data "aws_route53_zone" "main" {
+  name         = "omerha1.shop"
+  private_zone = false
+}
+
+# יצירת רשומת A שמפנה את הדומיין הראשי לכתובת ה-IP של השרת
+resource "aws_route53_record" "root" {
+  zone_id = data.aws_route53_zone.main.zone_id
+  name    = "omerha1.shop"
+  type    = "A"
+  ttl     = "300"
+  records = [aws_instance.app_server.public_ip]
+}
+
+# יצירת רשומת A עבור כל הסאב-דומיינים (argo, k8s, prometheus)
+resource "aws_route53_record" "wildcard" {
+  zone_id = data.aws_route53_zone.main.zone_id
+  name    = "*.omerha1.shop"
+  type    = "A"
+  ttl     = "300"
+  records = [aws_instance.app_server.public_ip]
 }
