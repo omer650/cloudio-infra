@@ -2,7 +2,7 @@ appName: cloudio-backend
 namespace: cloudio
 replicaCount: 1
 image:
-  repository: 102586998566.dkr.ecr.eu-west-1.amazonaws.com/cloudio-app
+  repository: 102586998566.dkr.ecr.eu-west-1.amazonaws.com/cloudio-backend
   tag: latest
   pullPolicy: Always
 
@@ -10,3 +10,4 @@ service:
   type: NodePort
   port: 8080
   nodePort: 30081
+
