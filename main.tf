@@ -38,13 +38,132 @@ provider "helm" {
   }
 }
 
+locals {
+  static_eip   = "63.32.4.109"
+  eip_alloc_id = "eipalloc-033d54552a41688a3"
+}
+
+resource "aws_instance" "app_server" {
+  ami           = "ami-0694d931cee176e7d"
+  instance_type = "t3.medium"
+  subnet_id     = module.vpc.public_subnets[0]
+  
+  vpc_security_group_ids = [aws_security_group.web_sg.id]
+  iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
+  key_name               = "cloudio-key"
+
+  root_block_device {
+    volume_size = 20
+  }
+
+  user_data = <<-EOF
+    #!/bin/bash
+    curl -sfL https://get.k3s.io | sh -
+    sleep 45
+    sudo chmod 644 /etc/rancher/k3s/k3s.yaml
+    export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+
+    kubectl create namespace cloudio --dry-run=client -o yaml | kubectl apply -f -
+    TOKEN=$(aws ecr get-login-password --region eu-west-1)
+    kubectl create secret docker-registry ecr-registry-helper \
+      --docker-server=102586998566.dkr.ecr.eu-west-1.amazonaws.com \
+      --docker-username=AWS \
+      --docker-password="$TOKEN" \
+      --namespace=cloudio --dry-run=client -o yaml | kubectl apply -f -
+  EOF
+
+  tags = { Name = "Cloudio-Server" }
+}
+
+resource "aws_eip_association" "eip_assoc" {
+  instance_id   = aws_instance.app_server.id
+  allocation_id = local.eip_alloc_id
+}
+
+resource "aws_security_group_rule" "allow_http" {
+  type              = "ingress"
+  from_port         = 80
+  to_port           = 80
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.web_sg.id
+}
+
+resource "aws_security_group_rule" "allow_https" {
+  type              = "ingress"
+  from_port         = 443
+  to_port           = 443
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.web_sg.id
+}
+
+resource "aws_security_group_rule" "allow_k3s_api" {
+  type              = "ingress"
+  from_port         = 6443
+  to_port           = 6443
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"] 
+  security_group_id = aws_security_group.web_sg.id
+}
+
+resource "aws_security_group_rule" "allow_nodeports" {
+  type              = "ingress"
+  from_port         = 30080
+  to_port           = 30090
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.web_sg.id
+}
+
+resource "aws_security_group_rule" "allow_ssh" {
+  type              = "ingress"
+  from_port         = 22
+  to_port           = 22
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.web_sg.id
+}
+
+resource "aws_ecr_repository" "cloudio_backend" {
+  name         = "cloudio-backend"
+  force_delete = true
+}
+
+resource "aws_ecr_repository" "cloudio_frontend" {
+  name         = "cloudio-frontend"
+  force_delete = true
+}
+
+data "aws_route53_zone" "main" {
+  name         = "omerha1.shop"
+  private_zone = false
+}
+
+resource "aws_route53_record" "root" {
+  zone_id = data.aws_route53_zone.main.zone_id
+  name    = "omerha1.shop"
+  type    = "A"
+  ttl     = "300"
+  records = [local.static_eip]
+}
+
+resource "aws_route53_record" "wildcard" {
+  zone_id = data.aws_route53_zone.main.zone_id
+  name    = "*.omerha1.shop"
+  type    = "A"
+  ttl     = "300"
+  records = [local.static_eip]
+}
+
 resource "helm_release" "argocd" {
-  name       = "argocd"
-  repository = "https://argoproj.github.io/argo-helm"
-  chart      = "argo-cd"
-  namespace  = "argocd"
+  name             = "argocd"
+  repository       = "https://argoproj.github.io/argo-helm"
+  chart            = "argo-cd"
+  namespace        = "argocd"
   create_namespace = true
-  version    = "5.46.7" # Stable version
+  version          = "5.46.7"
+
   set {
     name  = "server.service.type"
     value = "NodePort"
@@ -52,6 +171,10 @@ resource "helm_release" "argocd" {
   set {
     name  = "server.service.nodePortHttp"
     value = "30082"
+  }
+  set {
+    name  = "server.extraArgs[0]"
+    value = "--insecure"
   }
 }
 
@@ -86,71 +209,6 @@ resource "helm_release" "elasticsearch" {
     value = "1"
   }
 }
-
-
-# --- EC2 Instance ---
-resource "aws_instance" "app_server" {
-  ami           = "ami-0694d931cee176e7d"
-  instance_type = "t3.medium"
-  subnet_id     = module.vpc.public_subnets[0]
-  
-  vpc_security_group_ids = [aws_security_group.web_sg.id]
-  iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
-  key_name               = "cloudio-key"
-
-  root_block_device {
-    volume_size = 20
-  }
-
-  user_data = <<-EOF
-    #!/bin/bash
-    curl -sfL https://get.k3s.io | sh -
-    sleep 45
-    sudo chmod 644 /etc/rancher/k3s/k3s.yaml
-    export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-
-    kubectl create namespace cloudio --dry-run=client -o yaml | kubectl apply -f -
-    TOKEN=$(aws ecr get-login-password --region eu-west-1)
-    kubectl create secret docker-registry ecr-registry-helper \
-      --docker-server=102586998566.dkr.ecr.eu-west-1.amazonaws.com \
-      --docker-username=AWS \
-      --docker-password="$TOKEN" \
-      --namespace=cloudio --dry-run=client -o yaml | kubectl apply -f -
-  EOF
-
-  tags = { Name = "Cloudio-Server" }
-}
-
-# --- Security Group Rules (מקובעים למניעת מחיקה) ---
-
-resource "aws_security_group_rule" "allow_http" {
-  type              = "ingress"
-  from_port         = 80
-  to_port           = 80
-  protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"]
-  security_group_id = aws_security_group.web_sg.id
-}
-
-resource "aws_security_group_rule" "allow_k3s_api" {
-  type              = "ingress"
-  from_port         = 6443
-  to_port           = 6443
-  protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"] 
-  security_group_id = aws_security_group.web_sg.id
-}
-
-resource "aws_security_group_rule" "allow_nodeports" {
-  type              = "ingress"
-  from_port         = 30080
-  to_port           = 30090
-  protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"]
-  security_group_id = aws_security_group.web_sg.id
-}
-
-# --- Kubernetes Resources ---
 
 resource "kubernetes_secret" "db_secret" {
   metadata {
@@ -207,6 +265,8 @@ resource "kubernetes_ingress_v1" "cloudio_ingress" {
 }
 
 resource "kubernetes_ingress_v1" "argocd_ingress" {
+  depends_on = [helm_release.argocd]
+  
   metadata {
     name      = "argocd-ingress"
     namespace = "argocd"
@@ -232,6 +292,8 @@ resource "kubernetes_ingress_v1" "argocd_ingress" {
 }
 
 resource "kubernetes_ingress_v1" "prometheus_ingress" {
+  depends_on = [helm_release.prometheus]
+
   metadata {
     name      = "prometheus-ingress"
     namespace = "monitoring"
@@ -256,48 +318,14 @@ resource "kubernetes_ingress_v1" "prometheus_ingress" {
   }
 }
 
-# --- ECR Repositories ---
-resource "aws_ecr_repository" "cloudio_backend" {
-  name = "cloudio-backend"
-  force_delete = true
-}
+resource "null_resource" "fetch_kubeconfig" {
+  depends_on = [aws_eip_association.eip_assoc, aws_instance.app_server]
 
-resource "aws_ecr_repository" "cloudio_frontend" {
-  name = "cloudio-frontend"
-  force_delete = true
-}
+  triggers = {
+    instance_id = aws_instance.app_server.id
+  }
 
-resource "aws_security_group_rule" "allow_ssh" {
-  type              = "ingress"
-  from_port         = 22
-  to_port           = 22
-  protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"]
-  security_group_id = aws_security_group.web_sg.id
-}
-
-# --- Route53 Domain Management ---
-
-# קריאת הנתונים של הדומיין שכבר קיים ב-AWS
-data "aws_route53_zone" "main" {
-  name         = "omerha1.shop"
-  private_zone = false
-}
-
-# יצירת רשומת A שמפנה את הדומיין הראשי לכתובת ה-IP של השרת
-resource "aws_route53_record" "root" {
-  zone_id = data.aws_route53_zone.main.zone_id
-  name    = "omerha1.shop"
-  type    = "A"
-  ttl     = "300"
-  records = [aws_instance.app_server.public_ip]
-}
-
-# יצירת רשומת A עבור כל הסאב-דומיינים (argo, k8s, prometheus)
-resource "aws_route53_record" "wildcard" {
-  zone_id = data.aws_route53_zone.main.zone_id
-  name    = "*.omerha1.shop"
-  type    = "A"
-  ttl     = "300"
-  records = [aws_instance.app_server.public_ip]
+  provisioner "local-exec" {
+    command = "sleep 90 && ssh -o StrictHostKeyChecking=no -i ~/.ssh/cloudio-key.pem ubuntu@${local.static_eip} 'sudo cat /etc/rancher/k3s/k3s.yaml' > ~/.kube/config && sed -i 's/127.0.0.1/${local.static_eip}/g' ~/.kube/config && sed -i 's/certificate-authority-data:.*/insecure-skip-tls-verify: true/g' ~/.kube/config"
+  }
 }
