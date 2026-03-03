@@ -18,6 +18,8 @@ spec:
         image: 102586998566.dkr.ecr.eu-west-1.amazonaws.com/cloudio-frontend:latest
         ports:
         - containerPort: 80
+      imagePullSecrets:
+      - name: ecr-registry-helper
 ---
 apiVersion: v1
 kind: Service
