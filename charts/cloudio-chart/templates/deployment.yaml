@@ -38,4 +38,4 @@ spec:
       volumes:
         - name: storage-volume
           persistentVolumeClaim:
-            claimName: cloudio-storage
+            claimName: cloudio-storage-v2

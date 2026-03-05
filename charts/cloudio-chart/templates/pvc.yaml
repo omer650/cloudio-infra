@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: cloudio-storage
+  name: cloudio-storage-v2
   namespace: {{ .Values.namespace }}
 spec:
   accessModes:
